@@ -9,19 +9,16 @@ interface UsbCameraSession {
     public interface Events {
         void onCameraOpening();
 
-        void onCameraError(UsbCameraSession var1, String var2);
+        void onCameraError(UsbCameraSession session, String error);
 
-        void onCameraDisconnected(UsbCameraSession var1);
+        void onCameraClosed(UsbCameraSession session);
 
-        void onCameraClosed(UsbCameraSession var1);
-
-        void onFrameCaptured(UsbCameraSession var1, VideoFrame var2);
+        void onFrameCaptured(UsbCameraSession sesison, VideoFrame frame);
     }
 
     public interface CreateSessionCallback {
-        void onDone(UsbCameraSession var1);
-
-        void onFailure(UsbCameraSession.FailureType var1, String var2);
+        void onDone(UsbCameraSession session);
+        void onFailure(String error);
     }
 
     public static enum FailureType {

@@ -22,7 +22,6 @@ import java.util.Arrays;
 
 import javax.annotation.Nullable;
 
-
 class UsbCameraCapturer implements CameraVideoCapturer {
     private static final String TAG = "UsbCameraCapturer";
     private static final int MAX_OPEN_CAMERA_ATTEMPTS = 3;
@@ -35,80 +34,85 @@ class UsbCameraCapturer implements CameraVideoCapturer {
     @Nullable
     private final UsbCameraSession.CreateSessionCallback createSessionCallback = new UsbCameraSession.CreateSessionCallback() {
         public void onDone(UsbCameraSession session) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            Logging.d("UsbCameraCapturer", "Create session done. Switch state: " + UsbCameraCapturer.this.switchState + ". MediaRecorder state: " + UsbCameraCapturer.this.mediaRecorderState);
-            UsbCameraCapturer.this.uiThreadHandler.removeCallbacks(UsbCameraCapturer.this.openCameraTimeoutRunnable);
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                UsbCameraCapturer.this.capturerObserver.onCapturerStarted(true);
-                UsbCameraCapturer.this.sessionOpening = false;
-                UsbCameraCapturer.this.currentSession = session;
-                UsbCameraCapturer.this.cameraStatistics = new CameraStatistics(UsbCameraCapturer.this.surfaceHelper, UsbCameraCapturer.this.eventsHandler);
-                UsbCameraCapturer.this.firstFrameObserved = false;
-                UsbCameraCapturer.this.stateLock.notifyAll();
-                if (UsbCameraCapturer.this.switchState == UsbCameraCapturer.SwitchState.IN_PROGRESS) {
-                    if (UsbCameraCapturer.this.switchEventsHandler != null) {
-                        UsbCameraCapturer.this.switchEventsHandler.onCameraSwitchDone(UsbCameraCapturer.this.cameraEnumerator.isFrontFacing(UsbCameraCapturer.this.cameraName));
-                        UsbCameraCapturer.this.switchEventsHandler = null;
+            checkIsOnCameraThread();
+            Logging.d("UsbCameraCapturer", "Create session done. Switch state: " + switchState + ". MediaRecorder state: " + mediaRecorderState);
+            uiThreadHandler.removeCallbacks(openCameraTimeoutRunnable);
+            synchronized(stateLock) {
+                capturerObserver.onCapturerStarted(true);
+                sessionOpening = false;
+                currentSession = session;
+                cameraStatistics = new CameraStatistics(surfaceHelper, eventsHandler);
+                firstFrameObserved = false;
+                stateLock.notifyAll();
+                if (switchState == UsbCameraCapturer.SwitchState.IN_PROGRESS) {
+                    if (switchEventsHandler != null) {
+                        switchEventsHandler.onCameraSwitchDone(cameraEnumerator.isFrontFacing(cameraName));
+                        switchEventsHandler = null;
                     }
 
-                    UsbCameraCapturer.this.switchState = UsbCameraCapturer.SwitchState.IDLE;
-                } else if (UsbCameraCapturer.this.switchState == UsbCameraCapturer.SwitchState.PENDING) {
-                    UsbCameraCapturer.this.switchState = UsbCameraCapturer.SwitchState.IDLE;
-                    UsbCameraCapturer.this.switchCameraInternal(UsbCameraCapturer.this.switchEventsHandler);
+                    switchState = UsbCameraCapturer.SwitchState.IDLE;
+                } else if (switchState == UsbCameraCapturer.SwitchState.PENDING) {
+                    switchState = UsbCameraCapturer.SwitchState.IDLE;
+                    switchCameraInternal(switchEventsHandler);
                 }
 
-                if (UsbCameraCapturer.this.mediaRecorderState == UsbCameraCapturer.MediaRecorderState.IDLE_TO_ACTIVE || UsbCameraCapturer.this.mediaRecorderState == UsbCameraCapturer.MediaRecorderState.ACTIVE_TO_IDLE) {
-                    if (UsbCameraCapturer.this.mediaRecorderEventsHandler != null) {
-                        UsbCameraCapturer.this.mediaRecorderEventsHandler.onMediaRecorderSuccess();
-                        UsbCameraCapturer.this.mediaRecorderEventsHandler = null;
+                if (mediaRecorderState == UsbCameraCapturer.MediaRecorderState.IDLE_TO_ACTIVE || mediaRecorderState == UsbCameraCapturer.MediaRecorderState.ACTIVE_TO_IDLE) {
+                    if (mediaRecorderEventsHandler != null) {
+                        mediaRecorderEventsHandler.onMediaRecorderSuccess();
+                        mediaRecorderEventsHandler = null;
                     }
 
-                    if (UsbCameraCapturer.this.mediaRecorderState == UsbCameraCapturer.MediaRecorderState.IDLE_TO_ACTIVE) {
-                        UsbCameraCapturer.this.mediaRecorderState = UsbCameraCapturer.MediaRecorderState.ACTIVE;
+                    if (mediaRecorderState == UsbCameraCapturer.MediaRecorderState.IDLE_TO_ACTIVE) {
+                        mediaRecorderState = UsbCameraCapturer.MediaRecorderState.ACTIVE;
                     } else {
-                        UsbCameraCapturer.this.mediaRecorderState = UsbCameraCapturer.MediaRecorderState.IDLE;
+                        mediaRecorderState = UsbCameraCapturer.MediaRecorderState.IDLE;
                     }
                 }
 
             }
         }
 
+        @Override
+        public void onFailure(String error) {
+
+        }
+
         public void onFailure(UsbCameraSession.FailureType failureType, String error) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            UsbCameraCapturer.this.uiThreadHandler.removeCallbacks(UsbCameraCapturer.this.openCameraTimeoutRunnable);
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                UsbCameraCapturer.this.capturerObserver.onCapturerStarted(false);
-                UsbCameraCapturer.this.openAttemptsRemaining--;
-                if (UsbCameraCapturer.this.openAttemptsRemaining <= 0) {
+            checkIsOnCameraThread();
+            uiThreadHandler.removeCallbacks(openCameraTimeoutRunnable);
+            synchronized(stateLock) {
+                capturerObserver.onCapturerStarted(false);
+                openAttemptsRemaining--;
+                if (openAttemptsRemaining <= 0) {
                     Logging.w("UsbCameraCapturer", "Opening camera failed, passing: " + error);
-                    UsbCameraCapturer.this.sessionOpening = false;
-                    UsbCameraCapturer.this.stateLock.notifyAll();
-                    if (UsbCameraCapturer.this.switchState != UsbCameraCapturer.SwitchState.IDLE) {
-                        if (UsbCameraCapturer.this.switchEventsHandler != null) {
-                            UsbCameraCapturer.this.switchEventsHandler.onCameraSwitchError(error);
-                            UsbCameraCapturer.this.switchEventsHandler = null;
+                    sessionOpening = false;
+                    stateLock.notifyAll();
+                    if (switchState != UsbCameraCapturer.SwitchState.IDLE) {
+                        if (switchEventsHandler != null) {
+                            switchEventsHandler.onCameraSwitchError(error);
+                            switchEventsHandler = null;
                         }
 
-                        UsbCameraCapturer.this.switchState = UsbCameraCapturer.SwitchState.IDLE;
+                        switchState = UsbCameraCapturer.SwitchState.IDLE;
                     }
 
-                    if (UsbCameraCapturer.this.mediaRecorderState != UsbCameraCapturer.MediaRecorderState.IDLE) {
-                        if (UsbCameraCapturer.this.mediaRecorderEventsHandler != null) {
-                            UsbCameraCapturer.this.mediaRecorderEventsHandler.onMediaRecorderError(error);
-                            UsbCameraCapturer.this.mediaRecorderEventsHandler = null;
+                    if (mediaRecorderState != UsbCameraCapturer.MediaRecorderState.IDLE) {
+                        if (mediaRecorderEventsHandler != null) {
+                            mediaRecorderEventsHandler.onMediaRecorderError(error);
+                            mediaRecorderEventsHandler = null;
                         }
 
-                        UsbCameraCapturer.this.mediaRecorderState = UsbCameraCapturer.MediaRecorderState.IDLE;
+                        mediaRecorderState = UsbCameraCapturer.MediaRecorderState.IDLE;
                     }
 
                     if (failureType == UsbCameraSession.FailureType.DISCONNECTED) {
-                        UsbCameraCapturer.this.eventsHandler.onCameraDisconnected();
+                        eventsHandler.onCameraDisconnected();
                     } else {
-                        UsbCameraCapturer.this.eventsHandler.onCameraError(error);
+                        eventsHandler.onCameraError(error);
                     }
                 } else {
                     Logging.w("UsbCameraCapturer", "Opening camera failed, retry: " + error);
-                    UsbCameraCapturer.this.createSessionInternal(500, (MediaRecorder)null);
+                    createSessionInternal(500, (MediaRecorder)null);
                 }
 
             }
@@ -117,71 +121,73 @@ class UsbCameraCapturer implements CameraVideoCapturer {
     @Nullable
     private final UsbCameraSession.Events cameraSessionEventsHandler = new UsbCameraSession.Events() {
         public void onCameraOpening() {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                if (UsbCameraCapturer.this.currentSession != null) {
+            checkIsOnCameraThread();
+            synchronized(stateLock) {
+                if (currentSession != null) {
                     Logging.w("UsbCameraCapturer", "onCameraOpening while session was open.");
                 } else {
-                    UsbCameraCapturer.this.eventsHandler.onCameraOpening(UsbCameraCapturer.this.cameraName);
+                    eventsHandler.onCameraOpening(cameraName);
                 }
             }
         }
 
         public void onCameraError(UsbCameraSession session, String error) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                if (session != UsbCameraCapturer.this.currentSession) {
+            checkIsOnCameraThread();
+            synchronized(stateLock) {
+                if (session != currentSession) {
                     Logging.w("UsbCameraCapturer", "onCameraError from another session: " + error);
                 } else {
-                    UsbCameraCapturer.this.eventsHandler.onCameraError(error);
-                    UsbCameraCapturer.this.stopCapture();
+                    eventsHandler.onCameraError(error);
+                    stopCapture();
                 }
             }
         }
 
         public void onCameraDisconnected(UsbCameraSession session) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                if (session != UsbCameraCapturer.this.currentSession) {
+            checkIsOnCameraThread();
+            synchronized(stateLock) {
+                if (session != currentSession) {
                     Logging.w("UsbCameraCapturer", "onCameraDisconnected from another session.");
                 } else {
-                    UsbCameraCapturer.this.eventsHandler.onCameraDisconnected();
-                    UsbCameraCapturer.this.stopCapture();
+                    eventsHandler.onCameraDisconnected();
+                    stopCapture();
                 }
             }
         }
 
         public void onCameraClosed(UsbCameraSession session) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                if (session != UsbCameraCapturer.this.currentSession && UsbCameraCapturer.this.currentSession != null) {
+            checkIsOnCameraThread();
+            synchronized(stateLock) {
+                if (session != currentSession && currentSession != null) {
                     Logging.d("UsbCameraCapturer", "onCameraClosed from another session.");
                 } else {
-                    UsbCameraCapturer.this.eventsHandler.onCameraClosed();
+                    eventsHandler.onCameraClosed();
                 }
             }
         }
 
         public void onFrameCaptured(UsbCameraSession session, VideoFrame frame) {
-            UsbCameraCapturer.this.checkIsOnCameraThread();
-            synchronized(UsbCameraCapturer.this.stateLock) {
-                if (session != UsbCameraCapturer.this.currentSession) {
+            checkIsOnCameraThread();
+            synchronized(stateLock) {
+                if (session != currentSession) {
                     Logging.w("UsbCameraCapturer", "onTextureFrameCaptured from another session.");
                 } else {
-                    if (!UsbCameraCapturer.this.firstFrameObserved) {
-                        UsbCameraCapturer.this.eventsHandler.onFirstFrameAvailable();
-                        UsbCameraCapturer.this.firstFrameObserved = true;
+                    if (!firstFrameObserved) {
+                        eventsHandler.onFirstFrameAvailable();
+                        firstFrameObserved = true;
                     }
 
-                    UsbCameraCapturer.this.cameraStatistics.addFrame();
-                    UsbCameraCapturer.this.capturerObserver.onFrameCaptured(frame);
+                    if (cameraStatistics != null) {
+                        cameraStatistics.addFrame();
+                        capturerObserver.onFrameCaptured(frame);
+                    }
                 }
             }
         }
     };
     private final Runnable openCameraTimeoutRunnable = new Runnable() {
         public void run() {
-            UsbCameraCapturer.this.eventsHandler.onCameraError("Camera failed to start within timeout.");
+            eventsHandler.onCameraError("Camera failed to start within timeout.");
         }
     };
     @Nullable
@@ -278,7 +284,7 @@ class UsbCameraCapturer implements CameraVideoCapturer {
         this.uiThreadHandler.postDelayed(this.openCameraTimeoutRunnable, (long)(delayMs + 10000));
         this.cameraThreadHandler.postDelayed(new Runnable() {
             public void run() {
-                UsbCameraCapturer.this.createCameraSession(UsbCameraCapturer.this.createSessionCallback, UsbCameraCapturer.this.cameraSessionEventsHandler, UsbCameraCapturer.this.applicationContext, UsbCameraCapturer.this.surfaceHelper, mediaRecorder, UsbCameraCapturer.this.cameraName, UsbCameraCapturer.this.width, UsbCameraCapturer.this.height, UsbCameraCapturer.this.framerate);
+                createCameraSession(createSessionCallback, cameraSessionEventsHandler, applicationContext, surfaceHelper, cameraName, width, height, framerate);
             }
         }, (long)delayMs);
     }
@@ -337,7 +343,7 @@ class UsbCameraCapturer implements CameraVideoCapturer {
         Logging.d("UsbCameraCapturer", "switchCamera");
         this.cameraThreadHandler.post(new Runnable() {
             public void run() {
-                UsbCameraCapturer.this.switchCameraInternal(switchEventsHandler);
+                switchCameraInternal(switchEventsHandler);
             }
         });
     }
@@ -351,7 +357,7 @@ class UsbCameraCapturer implements CameraVideoCapturer {
         Logging.d("UsbCameraCapturer", "addMediaRecorderToCamera");
         this.cameraThreadHandler.post(new Runnable() {
             public void run() {
-                UsbCameraCapturer.this.updateMediaRecorderInternal(mediaRecorder, mediaRecoderEventsHandler);
+                updateMediaRecorderInternal(mediaRecorder, mediaRecoderEventsHandler);
             }
         });
     }
@@ -360,7 +366,7 @@ class UsbCameraCapturer implements CameraVideoCapturer {
         Logging.d("UsbCameraCapturer", "removeMediaRecorderFromCamera");
         this.cameraThreadHandler.post(new Runnable() {
             public void run() {
-                UsbCameraCapturer.this.updateMediaRecorderInternal((MediaRecorder)null, mediaRecoderEventsHandler);
+                updateMediaRecorderInternal((MediaRecorder)null, mediaRecoderEventsHandler);
             }
         });
     }
@@ -417,12 +423,12 @@ class UsbCameraCapturer implements CameraVideoCapturer {
                 this.cameraThreadHandler.post(new Runnable() {
                     public void run() {
                         oldSession.stop();
-                        UsbCameraCapturer.this.currentSession = null;
-                        int cameraNameIndex = Arrays.asList(deviceNames).indexOf(UsbCameraCapturer.this.cameraName);
-                        UsbCameraCapturer.this.cameraName = deviceNames[(cameraNameIndex + 1) % deviceNames.length];
-                        UsbCameraCapturer.this.sessionOpening = true;
-                        UsbCameraCapturer.this.openAttemptsRemaining = 1;
-                        UsbCameraCapturer.this.createSessionInternal(0, (MediaRecorder)null);
+                        currentSession = null;
+                        int cameraNameIndex = Arrays.asList(deviceNames).indexOf(cameraName);
+                        cameraName = deviceNames[(cameraNameIndex + 1) % deviceNames.length];
+                        sessionOpening = true;
+                        openAttemptsRemaining = 1;
+                        createSessionInternal(0, (MediaRecorder)null);
                     }
                 });
             }
@@ -500,12 +506,13 @@ class UsbCameraCapturer implements CameraVideoCapturer {
         }
     }
 
-    protected void createCameraSession(UsbCameraSession.CreateSessionCallback var1, UsbCameraSession.Events var2, Context var3, SurfaceTextureHelper var4, MediaRecorder var5, String var6, int var7, int var8, int var9) {
-        if (UsbCameraEnumerator.cameraName.equals(var6)) {
-            UvcCameraSession.create(var1, var2, var3, var4, var5, var7, var8, var9);
+    protected void createCameraSession(UsbCameraSession.CreateSessionCallback createSessionCallback, UsbCameraSession.Events events, Context applicationContext,
+                                       SurfaceTextureHelper surfaceTextureHelper, String cameraName, int width, int height, int framerate) {
+        if (UsbCameraEnumerator.cameraName.equals(cameraName)) {
+            UvcCameraSession.create(createSessionCallback, events, applicationContext, surfaceTextureHelper, width, height, framerate);
         }
         else {
-            Camera1CopySession.create(var1, var2, true, var3, var4, var5, UsbCameraEnumerator.getCameraIndex(var6), var7, var8, var9);
+            Camera1CopySession.create(createSessionCallback, events, false, applicationContext, surfaceTextureHelper, UsbCameraEnumerator.getCameraIndex(cameraName), width, height, framerate);
         }
     }
 

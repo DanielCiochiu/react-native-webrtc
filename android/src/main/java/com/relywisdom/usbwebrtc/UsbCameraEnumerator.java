@@ -88,11 +88,7 @@ public class UsbCameraEnumerator extends Camera2Enumerator {
 
     @Override
     public CameraVideoCapturer createCapturer(String deviceName, CameraVideoCapturer.CameraEventsHandler eventsHandler) {
-        if (deviceName.equals(cameraName)) {
-            return new UsbCameraCapturer(deviceName, eventsHandler, this);
-        } else {
-            return super.createCapturer(String.valueOf(getCameraIndex(deviceName)), eventsHandler);
-        }
+        return new UsbCameraCapturer(deviceName, eventsHandler, this);
     }
 
     static List<org.webrtc.Size> convertSizes(List<Camera.Size> cameraSizes) {

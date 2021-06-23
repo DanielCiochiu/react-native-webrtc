@@ -4,8 +4,6 @@ import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
-import android.media.MediaRecorder;
-import android.os.Build;
 import android.os.Handler;
 import android.util.Log;
 import android.view.Surface;
@@ -18,16 +16,12 @@ import com.serenegiant.usb.UVCCamera;
 
 import org.webrtc.CameraEnumerationAndroid;
 import org.webrtc.Logging;
-import org.webrtc.RendererCommon;
 import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.VideoFrame;
 import org.webrtc.VideoSink;
 
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import javax.annotation.Nullable;
 
 class UvcCameraSession implements UsbCameraSession {
     private static final String TAG = "relabo.UvcCameraSession";
@@ -38,9 +32,7 @@ class UvcCameraSession implements UsbCameraSession {
     private CameraEnumerationAndroid.CaptureFormat captureFormat;
     private long constructionTimeNs;
     private USBMonitor mUSBMonitor;
-    private MediaRecorder mediaRecorder;
     private UvcCameraSession.SessionState state;
-    private boolean firstFrameReported = false;
     private UVCCamera mUVCCamera;
     private final Object mSync = new Object();
     private Surface mPreviewSurface;
@@ -141,12 +133,13 @@ class UvcCameraSession implements UsbCameraSession {
 
     private static UvcCameraSession lastSession;
 
-    public static void create(CreateSessionCallback callback, Events events, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper, MediaRecorder mediaRecorder, int width, int height, int framerate) {
+    public static void create(CreateSessionCallback callback, Events events, Context applicationContext,
+                              SurfaceTextureHelper surfaceTextureHelper, int width, int height, int framerate) {
         long constructionTimeNs = System.nanoTime();
         Logging.d("UvcCameraSession", "Open usb camera ");
         events.onCameraOpening();
         CameraEnumerationAndroid.CaptureFormat captureFormat = findClosestCaptureFormat(width, height, framerate);
-        UvcCameraSession current = new UvcCameraSession(events, applicationContext, surfaceTextureHelper, mediaRecorder, captureFormat, constructionTimeNs);
+        UvcCameraSession current = new UvcCameraSession(events, applicationContext, surfaceTextureHelper, captureFormat, constructionTimeNs);
         UvcCameraSession cache = lastSession;
         lastSession = current;
         if (cache != null) {
@@ -176,7 +169,7 @@ class UvcCameraSession implements UsbCameraSession {
         return new CameraEnumerationAndroid.CaptureFormat(width, height, framerate, framerate);
     }
 
-    private UvcCameraSession(Events events, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper, @Nullable MediaRecorder mediaRecorder, CameraEnumerationAndroid.CaptureFormat captureFormat, long constructionTimeNs) {
+    private UvcCameraSession(Events events, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper, CameraEnumerationAndroid.CaptureFormat captureFormat, long constructionTimeNs) {
         Logging.d("UvcCameraSession", "Create new camera1 session on usb camera");
         this.cameraThreadHandler = new Handler();
         this.events = events;
@@ -185,7 +178,6 @@ class UvcCameraSession implements UsbCameraSession {
         this.mUSBMonitor = new USBMonitor(applicationContext, mOnDeviceConnectListener);
         this.captureFormat = captureFormat;
         this.constructionTimeNs = constructionTimeNs;
-        this.mediaRecorder = mediaRecorder;
     }
 
     public void stop() {
@@ -209,19 +201,12 @@ class UvcCameraSession implements UsbCameraSession {
     }
 
     private void startCapturing() {
-
         Logging.d("UvcCameraSession", "Start capturing");
         try {
             this.checkIsOnCameraThread();
             final SurfaceTexture st = surfaceTextureHelper.getSurfaceTexture();
             if (st != null) {
                 mPreviewSurface = new Surface(st);
-
-                if (mediaRecorder != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        mediaRecorder.setInputSurface(mPreviewSurface);
-                    }
-                }
             }
             this.state = SessionState.RUNNING;
             this.listenForTextureFrames();

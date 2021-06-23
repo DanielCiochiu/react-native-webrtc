@@ -40,7 +40,10 @@ class Camera1CopySession implements UsbCameraSession {
     private Camera1CopySession.SessionState state;
     private boolean firstFrameReported = false;
 
-    public static void create(CreateSessionCallback callback, Events events, boolean captureToTexture, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper, MediaRecorder mediaRecorder, int cameraId, int width, int height, int framerate) {
+    public static void create(final CreateSessionCallback callback, final Events events,
+                              final boolean captureToTexture, final Context applicationContext,
+                              final SurfaceTextureHelper surfaceTextureHelper, final int cameraId, final int width,
+                              final int height, final int framerate) {
         long constructionTimeNs = System.nanoTime();
         Logging.d("Camera1CopySession", "Open camera " + cameraId);
         events.onCameraOpening();
@@ -48,19 +51,19 @@ class Camera1CopySession implements UsbCameraSession {
         Camera camera;
         try {
             camera = Camera.open(cameraId);
-        } catch (RuntimeException var21) {
-            callback.onFailure(FailureType.ERROR, var21.getMessage());
+        } catch (RuntimeException exception) {
+            callback.onFailure(exception.getMessage());
             return;
         }
 
         if (camera == null) {
-            callback.onFailure(FailureType.ERROR, "android.hardware.Camera.open returned null for camera id = " + cameraId);
+            callback.onFailure("android.hardware.Camera.open returned null for camera id = " + cameraId);
         } else {
             try {
                 camera.setPreviewTexture(surfaceTextureHelper.getSurfaceTexture());
             } catch (RuntimeException | IOException var20) {
                 camera.release();
-                callback.onFailure(FailureType.ERROR, var20.getMessage());
+                callback.onFailure(var20.getMessage());
                 return;
             }
 
@@ -73,14 +76,16 @@ class Camera1CopySession implements UsbCameraSession {
             if (!captureToTexture) {
                 int frameSize = captureFormat.frameSize();
 
-                for (int i = 0; i < 3; ++i) {
+                for (int i = 0; i < NUMBER_OF_CAPTURE_BUFFERS; ++i) {
                     ByteBuffer buffer = ByteBuffer.allocateDirect(frameSize);
                     camera.addCallbackBuffer(buffer.array());
                 }
             }
 
             camera.setDisplayOrientation(0);
-            callback.onDone(new Camera1CopySession(events, captureToTexture, applicationContext, surfaceTextureHelper, mediaRecorder, cameraId, camera, info, captureFormat, constructionTimeNs));
+            callback.onDone(
+                new Camera1CopySession(events, captureToTexture, applicationContext, surfaceTextureHelper,
+                    cameraId, width, height, framerate, camera, info, captureFormat, constructionTimeNs));
         }
     }
 
@@ -118,7 +123,9 @@ class Camera1CopySession implements UsbCameraSession {
         return CameraEnumerationAndroid.getClosestSupportedSize(UsbCameraEnumerator.convertSizes(parameters.getSupportedPictureSizes()), width, height);
     }
 
-    private Camera1CopySession(Events events, boolean captureToTexture, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper, @Nullable MediaRecorder mediaRecorder, int cameraId, Camera camera, Camera.CameraInfo info, CameraEnumerationAndroid.CaptureFormat captureFormat, long constructionTimeNs) {
+    private Camera1CopySession(Events events, boolean captureToTexture, Context applicationContext, SurfaceTextureHelper surfaceTextureHelper,
+                               int cameraId, int width, int height, int framerate, Camera camera, Camera.CameraInfo info,
+                               CameraEnumerationAndroid.CaptureFormat captureFormat, long constructionTimeNs) {
         Logging.d("Camera1CopySession", "Create new camera1 session on camera " + cameraId);
         this.cameraThreadHandler = new Handler();
         this.events = events;
@@ -131,11 +138,6 @@ class Camera1CopySession implements UsbCameraSession {
         this.captureFormat = captureFormat;
         this.constructionTimeNs = constructionTimeNs;
         this.startCapturing();
-        if (mediaRecorder != null) {
-            camera.unlock();
-            mediaRecorder.setCamera(camera);
-        }
-
     }
 
     public void stop() {
@@ -165,12 +167,7 @@ class Camera1CopySession implements UsbCameraSession {
 
                 Logging.e("Camera1CopySession", errorMessage);
                 Camera1CopySession.this.stopInternal();
-                if (error == 2) {
-                    Camera1CopySession.this.events.onCameraDisconnected(Camera1CopySession.this);
-                } else {
-                    Camera1CopySession.this.events.onCameraError(Camera1CopySession.this, errorMessage);
-                }
-
+                Camera1CopySession.this.events.onCameraError(Camera1CopySession.this, errorMessage);
             }
         });
         if (this.captureToTexture) {
