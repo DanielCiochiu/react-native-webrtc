@@ -17,6 +17,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.relywisdom.usbwebrtc.UsbCameraEnumerator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -68,7 +69,8 @@ class GetUserMediaImpl {
 
         if (camera2supported) {
             Log.d(TAG, "Creating video capturer using Camera2 API.");
-            cameraEnumerator = new Camera2Enumerator(reactContext);
+            // cameraEnumerator = new Camera2Enumerator(reactContext);
+            cameraEnumerator = new UsbCameraEnumerator(reactContext);
         } else {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
             cameraEnumerator = new Camera1Enumerator(false);
